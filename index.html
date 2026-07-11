@@ -1396,8 +1396,8 @@ function buildContourRibbons(polys,wKm,color,opacity,off,grp){
   ribbonItems.push({geo:g,gnd:new Float32Array(G),off:off}); }
 function ensureContours(){ if(contLoaded||contLoading)return; contLoading=true; toast('等高線載入中…');
   fetch('cont.json'+TV).then(function(r){return r.json();}).then(function(C){
-    buildContourRibbons(C.main,0.020,0x3d2a12,0.82,7,gContour);
-    buildContourRibbons(C.index,0.052,0x14100a,0.95,8,gContour);
+    buildContourRibbons(C.main,0.045,0x4a3016,0.85,13,gContour);
+    buildContourRibbons(C.index,0.100,0x241206,0.95,14,gContour);
     contLoaded=true; contLoading=false; toastHide(); applyContours();
   }).catch(function(){ contLoading=false; toast('等高線載入失敗，請檢查網路後重試',6000); });
 }
