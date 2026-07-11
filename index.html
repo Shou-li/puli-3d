@@ -1378,8 +1378,8 @@ var gContour=new THREE.Group(); scene.add(gContour); gContour.visible=false;
 var contLoaded=false,contLoading=false;
 function ensureContours(){ if(contLoaded||contLoading)return; contLoading=true; toast('等高線載入中…');
   fetch('cont.json'+TV).then(function(r){return r.json();}).then(function(C){
-    addBundle(C.main,0x9a6b3c,0.34,7,gContour);
-    addBundle(C.index,0x5f3410,0.64,8,gContour);
+    addBundle(C.main,0x5a3d1c,0.5,7,gContour);
+    addBundle(C.index,0x1c1004,0.9,8,gContour);
     contLoaded=true; contLoading=false; toastHide(); applyContours();
   }).catch(function(){ contLoading=false; toast('等高線載入失敗，請檢查網路後重試',6000); });
 }
