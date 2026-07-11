@@ -66,8 +66,8 @@ canvas{display:block;touch-action:none}
 <div id="northbox"><span id="north">N↑</span></div>
 <div id="ctrl" class="panel">
   <button class="tog" id="tog_ctrl">設定 ▾</button>
-  <div class="seg"><button id="mode_cont" class="on">等高線</button><button id="mode_sat">衛星</button><button id="mode_hist">歷史</button></div>
-  <div id="contopt" class="togs" style="font-size:12px"><label><input type="checkbox" id="ck_lab" checked> 地名</label><label><input type="checkbox" id="ck_road" checked> 道路</label><label><input type="checkbox" id="ck_wat" checked> 水文</label><label><input type="checkbox" id="ck_peak" checked> 山峰</label><label><input type="checkbox" id="ck_agri"> 農業</label><label><input type="checkbox" id="ck_bld"> 建築</label></div>
+  <div class="seg"><button id="mode_cont" class="on">等高線</button><button id="mode_sat">衛星</button><button id="mode_hist">歷史</button><button id="mode_lu">土地利用</button></div>
+  <div id="contopt" class="togs" style="font-size:12px"><label><input type="checkbox" id="ck_lab" checked> 地名</label><label><input type="checkbox" id="ck_road" checked> 道路</label><label><input type="checkbox" id="ck_wat" checked> 水文</label><label><input type="checkbox" id="ck_peak" checked> 山峰</label><label><input type="checkbox" id="ck_cont"> 等高線</label><label><input type="checkbox" id="ck_agri"> 農業</label><label><input type="checkbox" id="ck_bld"> 建築</label></div>
   <div id="satopt" class="togs" style="display:none;font-size:12px"><label><input type="checkbox" id="ck_slab" checked> 地名</label></div>
   <div id="histopt" class="sec" style="display:none">
     <div class="h">歷史地圖</div>
@@ -96,8 +96,16 @@ canvas{display:block;touch-action:none}
     <div class="row">1989 經建版地形圖一版（1:25,000）</div>
     <div class="row" style="opacity:.75">套合誤差可達百餘公尺，僅供對照</div>
   </div>
+  <div id="lg_lu" style="display:none">
+    <div class="cap">土地使用（國土利用調查・第一級）</div>
+    <div class="row" style="margin-top:2px"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#7DBB3F"></span> 農業　<span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#2E7D32"></span> 森林</div>
+    <div class="row"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#E24B6A"></span> 建築　<span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#4FA8E0"></span> 水利・水域</div>
+    <div class="row"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#B060D8"></span> 公共設施　<span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#969696"></span> 交通</div>
+    <div class="row"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#C9B79A"></span> 其他</div>
+    <div class="row" style="opacity:.72">森林／農業以地形坡度輔助分離・資料 NLSC</div>
+  </div>
 </div>
-<div id="src">高程：AWS Terrain Tiles｜衛星：Sentinel-2 cloudless (EOX)｜道路/水文/地名/山峰：OpenStreetMap｜農業/建物：內政部國土測繪中心（國土利用調查・分棟建物）｜歷史地圖：中央研究院人社中心GIS專題中心（臺灣百年歷史地圖）｜圖資擷取 2026-07｜製作：Claude × 葉守禮，2026</div>
+<div id="src">高程：AWS Terrain Tiles｜衛星：Sentinel-2 cloudless (EOX)｜道路/水文/地名/山峰：OpenStreetMap｜農業/建物/土地利用：內政部國土測繪中心（國土利用調查・分棟建物）｜歷史地圖：中央研究院人社中心GIS專題中心（臺灣百年歷史地圖）｜圖資擷取 2026-07｜製作：Claude × 葉守禮，2026</div>
 <script>/**
  * @license
  * Copyright 2010-2021 Three.js Authors
@@ -1303,6 +1311,11 @@ function applyOverlays(){ var c=(mode==='cont');
   var wa=c&&document.getElementById('ck_agri').checked, wb=c&&document.getElementById('ck_bld').checked;
   if(wa||wb) ensureOverlays();
   moAgri.visible=wa; moBld.visible=wb; }
+/* 土地利用 overlay（NLSC 國土利用調查第一級分類，第4模式；懶載入） */
+var moLU=overlay('th_landuse.png'); moLU.renderOrder=3; moLU.material.opacity=0.9;
+var luLoaded=false;
+function ensureLanduse(){ if(luLoaded)return; luLoaded=true; toast('土地利用圖載入中…');
+  moLU.material.map=loadTex('th_landuse.png'+TV); moLU.material.needsUpdate=true; }
 var histSel='1904',histTex={};
 var HIST_HI=(renderer.capabilities.maxTextureSize>=8192)&&!isMobile&&((navigator.deviceMemory||8)>=8);
 function ensureHist(){
@@ -1360,6 +1373,19 @@ addBundle(VECT.rivers,0x3f9fe0,0.92,14,gWater);
 addBundle(VECT.trk,0xa89468,0.42,16,gRoads);
 addBundle(VECT.rmin,0xb9a071,0.6,17,gRoads);
 addBundle(VECT.rmaj,0xf08a3c,0.92,18,gRoads);
+/* 等高線（主100m/計500m，向量貼地，等高線模式可勾選；懶載入 cont.json） */
+var gContour=new THREE.Group(); scene.add(gContour); gContour.visible=false;
+var contLoaded=false,contLoading=false;
+function ensureContours(){ if(contLoaded||contLoading)return; contLoading=true; toast('等高線載入中…');
+  fetch('cont.json'+TV).then(function(r){return r.json();}).then(function(C){
+    addBundle(C.main,0x9a6b3c,0.34,7,gContour);
+    addBundle(C.index,0x5f3410,0.64,8,gContour);
+    contLoaded=true; contLoading=false; toastHide(); applyContours();
+  }).catch(function(){ contLoading=false; toast('等高線載入失敗，請檢查網路後重試',6000); });
+}
+function applyContours(){ var want=(mode==='cont')&&document.getElementById('ck_cont').checked;
+  if(want&&!contLoaded){ ensureContours(); }
+  gContour.visible=want&&contLoaded; }
 /* 主河道貼地緞帶：眉溪・南港溪加粗 */
 var ribbonItems=[];
 function addRibbon(pts,wKm,color,off){ var n=pts.length; if(n<2)return;
@@ -1487,17 +1513,18 @@ document.getElementById('ck_wat').addEventListener('change',function(e){ gWater.
 document.getElementById('ck_peak').addEventListener('change',function(e){ gPeaks.visible=(mode==='cont')&&e.target.checked; });
 document.getElementById('ck_agri').addEventListener('change',applyOverlays);
 document.getElementById('ck_bld').addEventListener('change',applyOverlays);
+document.getElementById('ck_cont').addEventListener('change',applyContours);
 document.getElementById('ck_slab').addEventListener('change',function(e){ if(mode==='sat') gLabels.visible=e.target.checked; });
 addEventListener('keydown',function(e){ var k=e.key,mv=new THREE.Vector3(); var d=camera.position.distanceTo(controls.target),pan=d*0.11; var fwd=new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y=0; if(fwd.lengthSq()<1e-6)return; fwd.normalize(); var rt=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize(); if(k==='ArrowUp')mv.copy(fwd); else if(k==='ArrowDown')mv.copy(fwd).negate(); else if(k==='ArrowRight')mv.copy(rt); else if(k==='ArrowLeft')mv.copy(rt).negate(); else return; e.preventDefault(); mv.multiplyScalar(pan); camera.position.add(mv); controls.target.add(mv); });
 /* mode switching */
-var bCont=document.getElementById('mode_cont'),bSat=document.getElementById('mode_sat'),bHist=document.getElementById('mode_hist');
-var legend=document.getElementById('legend'),lgHyps=document.getElementById('lg_hyps'),lgHist=document.getElementById('lg_hist');
+var bCont=document.getElementById('mode_cont'),bSat=document.getElementById('mode_sat'),bHist=document.getElementById('mode_hist'),bLU=document.getElementById('mode_lu');
+var legend=document.getElementById('legend'),lgHyps=document.getElementById('lg_hyps'),lgHist=document.getElementById('lg_hist'),lgLU=document.getElementById('lg_lu');
 var contopt=document.getElementById('contopt'),histopt=document.getElementById('histopt');
 var mode='cont';
 function setMode(m){ mode=m;
-  bCont.classList.toggle('on',m==='cont'); bSat.classList.toggle('on',m==='sat'); bHist.classList.toggle('on',m==='hist');
+  bCont.classList.toggle('on',m==='cont'); bSat.classList.toggle('on',m==='sat'); bHist.classList.toggle('on',m==='hist'); bLU.classList.toggle('on',m==='lu');
   contopt.style.display='none'; histopt.style.display='none'; document.getElementById('satopt').style.display='none';
-  lgHyps.style.display='none'; lgHist.style.display='none';
+  lgHyps.style.display='none'; lgHist.style.display='none'; lgLU.style.display='none';
   if(m==='cont'){ geo.setAttribute('color',colAttrHyps); colAttrHyps.needsUpdate=true; mesh.material=mat_base; mesh.visible=true;
     gVect.visible=true; gWater.visible=document.getElementById('ck_wat').checked; gRoads.visible=document.getElementById('ck_road').checked;
     gLabels.visible=document.getElementById('ck_lab').checked;
@@ -1507,18 +1534,22 @@ function setMode(m){ mode=m;
     gVect.visible=false; document.getElementById('satopt').style.display='block';
     gLabels.visible=document.getElementById('ck_slab').checked;
     legend.style.display='none';
+  } else if(m==='lu'){ ensureLanduse(); geo.setAttribute('color',colAttrGrey); colAttrGrey.needsUpdate=true; mesh.material=mat_base; mesh.visible=true;
+    gVect.visible=false; gLabels.visible=true;
+    legend.style.display='block'; lgLU.style.display='block';
   } else { ensureHist(); geo.setAttribute('color',colAttrGrey); colAttrGrey.needsUpdate=true; mesh.material=mat_base; mesh.visible=true;
     gVect.visible=false; gLabels.visible=true;
     histopt.style.display='block';
     legend.style.display='block'; lgHist.style.display='block';
   }
-  moHist.visible=(m==='hist');
+  moHist.visible=(m==='hist'); moLU.visible=(m==='lu');
   gPeaks.visible=(m==='cont')&&document.getElementById('ck_peak').checked;
-  applyOverlays();
+  applyOverlays(); applyContours();
 }
 bCont.addEventListener('click',function(){ setMode('cont'); });
 bSat.addEventListener('click',function(){ setMode('sat'); });
 bHist.addEventListener('click',function(){ setMode('hist'); });
+bLU.addEventListener('click',function(){ setMode('lu'); });
 document.querySelectorAll('input[name=histmap]').forEach(function(r){ r.addEventListener('change',function(){ if(r.checked){ histSel=r.value; if(mode==='hist') ensureHist(); } }); });
 var hop=document.getElementById('hop'),hopVal=document.getElementById('hopval');
 hop.addEventListener('input',function(){ var hv=parseInt(hop.value); hopVal.textContent=hv+'%'; moHist.material.opacity=hv/100; });
