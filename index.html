@@ -1394,16 +1394,12 @@ function buildContourRibbons(polys,wKm,color,opacity,off,grp){
   m.color.convertSRGBToLinear();
   var rm=new THREE.Mesh(g,m); rm.renderOrder=4; rm.frustumCulled=false; grp.add(rm);
   ribbonItems.push({geo:g,gnd:new Float32Array(G),off:off}); }
-function ensureContours(){ if(contLoaded||contLoading)return; contLoading=true; toast('等高線載入中…');
-  fetch('cont.json'+TV).then(function(r){return r.json();}).then(function(C){
-    buildContourRibbons(C.main,0.045,0x4a3016,0.85,13,gContour);
-    buildContourRibbons(C.index,0.100,0x241206,0.95,14,gContour);
-    contLoaded=true; contLoading=false; toastHide(); applyContours();
-  }).catch(function(){ contLoading=false; toast('等高線載入失敗，請檢查網路後重試',6000); });
-}
+var moContour=overlay('th_contour.png'); moContour.renderOrder=3; moContour.material.opacity=1.0;
+function ensureContours(){ if(contLoaded)return; contLoaded=true; toast('等高線載入中…');
+  moContour.material.map=loadTex('th_contour.png'+TV); moContour.material.needsUpdate=true; }
 function applyContours(){ var want=(mode==='cont')&&document.getElementById('ck_cont').checked;
-  if(want&&!contLoaded){ ensureContours(); }
-  gContour.visible=want&&contLoaded; }
+  if(want) ensureContours();
+  moContour.visible=want; }
 /* 主河道貼地緞帶：眉溪・南港溪加粗 */
 var ribbonItems=[];
 function addRibbon(pts,wKm,color,off){ var n=pts.length; if(n<2)return;
