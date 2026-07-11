@@ -1376,10 +1376,28 @@ addBundle(VECT.rmaj,0xf08a3c,0.92,18,gRoads);
 /* 等高線（主100m/計500m，向量貼地，等高線模式可勾選；懶載入 cont.json） */
 var gContour=new THREE.Group(); scene.add(gContour); gContour.visible=false;
 var contLoaded=false,contLoading=false;
+function buildContourRibbons(polys,wKm,color,opacity,off,grp){
+  var P=[],G=[],IDX=[],base=0;
+  polys.forEach(function(flat){ var n=flat.length/2; if(n<2)return;
+    var px=[]; for(var i=0;i<n;i++){ px.push([lonToX(flat[i*2]),latToZ(flat[i*2+1])]); }
+    for(var i=0;i<n;i++){ var x=px[i][0],z=px[i][1];
+      var i0=i>0?i-1:i,i1=i<n-1?i+1:i;
+      var dx=px[i1][0]-px[i0][0],dz=px[i1][1]-px[i0][1],dl=Math.sqrt(dx*dx+dz*dz)||1e-6;
+      var ox=-dz/dl*wKm/2,oz=dx/dl*wKm/2,xa=x+ox,za=z+oz,xb=x-ox,zb=z-oz;
+      P.push(xa,0,za,xb,0,zb);
+      G.push(inside(xa,za)?sampleElev(xa,za):sampleElev(x,z),inside(xb,zb)?sampleElev(xb,zb):sampleElev(x,z));
+      if(i<n-1){ var q=base+i*2; IDX.push(q,q+1,q+2,q+1,q+3,q+2); } }
+    base+=n*2; });
+  if(!P.length)return;
+  var g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(P),3)); g.setIndex(IDX);
+  var m=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:opacity,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+  m.color.convertSRGBToLinear();
+  var rm=new THREE.Mesh(g,m); rm.renderOrder=4; rm.frustumCulled=false; grp.add(rm);
+  ribbonItems.push({geo:g,gnd:new Float32Array(G),off:off}); }
 function ensureContours(){ if(contLoaded||contLoading)return; contLoading=true; toast('等高線載入中…');
   fetch('cont.json'+TV).then(function(r){return r.json();}).then(function(C){
-    addBundle(C.main,0x5a3d1c,0.5,7,gContour);
-    addBundle(C.index,0x1c1004,0.9,8,gContour);
+    buildContourRibbons(C.main,0.020,0x3d2a12,0.82,7,gContour);
+    buildContourRibbons(C.index,0.052,0x14100a,0.95,8,gContour);
     contLoaded=true; contLoading=false; toastHide(); applyContours();
   }).catch(function(){ contLoading=false; toast('等高線載入失敗，請檢查網路後重試',6000); });
 }
