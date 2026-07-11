@@ -67,7 +67,7 @@ canvas{display:block;touch-action:none}
 <div id="ctrl" class="panel">
   <button class="tog" id="tog_ctrl">設定 ▾</button>
   <div class="seg"><button id="mode_cont" class="on">等高線</button><button id="mode_sat">衛星</button><button id="mode_hist">歷史</button></div>
-  <div id="contopt" class="togs" style="font-size:12px"><label><input type="checkbox" id="ck_lab" checked> 地名</label><label><input type="checkbox" id="ck_road" checked> 道路</label><label><input type="checkbox" id="ck_wat" checked> 水文</label><label><input type="checkbox" id="ck_peak" checked> 山峰</label></div>
+  <div id="contopt" class="togs" style="font-size:12px"><label><input type="checkbox" id="ck_lab" checked> 地名</label><label><input type="checkbox" id="ck_road" checked> 道路</label><label><input type="checkbox" id="ck_wat" checked> 水文</label><label><input type="checkbox" id="ck_peak" checked> 山峰</label><label><input type="checkbox" id="ck_agri"> 農業</label><label><input type="checkbox" id="ck_bld"> 建築</label></div>
   <div id="satopt" class="togs" style="display:none;font-size:12px"><label><input type="checkbox" id="ck_slab" checked> 地名</label></div>
   <div id="histopt" class="sec" style="display:none">
     <div class="h">歷史地圖</div>
@@ -87,6 +87,7 @@ canvas{display:block;touch-action:none}
     <div class="row" style="margin-top:6px"><span class="ln" style="border-top-color:#3f9fe0"></span>河川　<span class="ln" style="border-top-color:#6fb2dd"></span>溪流</div>
     <div class="row"><span class="ln" style="border-top-color:#f08a3c"></span>主要道路 <span class="ln" style="border-top-color:#b9a071"></span>一般 <span class="ln" style="border-top-color:#a89468"></span>產業</div>
     <div class="row">▲ 山峰（附標高 m）</div>
+    <div class="row" style="margin-top:5px"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#56a846"></span> 農業用地　<span style="display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;background:#2474ff"></span> 建築物<span style="opacity:.7">（勾選顯示・NLSC）</span></div>
   </div>
   <div id="lg_hist" style="display:none">
     <div class="cap">歷史地圖</div>
@@ -96,7 +97,7 @@ canvas{display:block;touch-action:none}
     <div class="row" style="opacity:.75">套合誤差可達百餘公尺，僅供對照</div>
   </div>
 </div>
-<div id="src">高程：AWS Terrain Tiles｜衛星：Sentinel-2 cloudless (EOX)｜道路/水文/地名/山峰：OpenStreetMap｜歷史地圖：中央研究院人社中心GIS專題中心（臺灣百年歷史地圖）｜圖資擷取 2026-07｜製作：Claude × 葉守禮，2026</div>
+<div id="src">高程：AWS Terrain Tiles｜衛星：Sentinel-2 cloudless (EOX)｜道路/水文/地名/山峰：OpenStreetMap｜農業/建物：內政部國土測繪中心（國土利用調查・分棟建物）｜歷史地圖：中央研究院人社中心GIS專題中心（臺灣百年歷史地圖）｜圖資擷取 2026-07｜製作：Claude × 葉守禮，2026</div>
 <script>/**
  * @license
  * Copyright 2010-2021 Three.js Authors
@@ -1291,6 +1292,17 @@ function overlay(url){
 }
 /* 歷史地圖 overlay（中研院臺灣百年歷史地圖，烘焙靜態檔） */
 var moHist=overlay('hist'); moHist.renderOrder=5; moHist.material.opacity=1.0;
+/* 農業／建築 疊圖（NLSC 國土利用調查農業用地／分棟建物框，等高線模式可勾選；懶載入） */
+var moAgri=overlay('th_agri.png'); moAgri.renderOrder=1; moAgri.material.opacity=0.85;
+var moBld=overlay('th_bld.png'); moBld.renderOrder=2; moBld.material.opacity=0.6; moBld.material.color.setRGB(0.9,0.93,1.0); moBld.material.color.convertSRGBToLinear();
+var luiLoaded=false;
+function ensureOverlays(){ if(luiLoaded)return; luiLoaded=true; toast('農業／建築圖層載入中…');
+  moAgri.material.map=loadTex('th_agri.png'+TV); moAgri.material.needsUpdate=true;
+  moBld.material.map=loadTex('th_bld.png'+TV); moBld.material.needsUpdate=true; }
+function applyOverlays(){ var c=(mode==='cont');
+  var wa=c&&document.getElementById('ck_agri').checked, wb=c&&document.getElementById('ck_bld').checked;
+  if(wa||wb) ensureOverlays();
+  moAgri.visible=wa; moBld.visible=wb; }
 var histSel='1904',histTex={};
 var HIST_HI=(renderer.capabilities.maxTextureSize>=8192)&&!isMobile&&((navigator.deviceMemory||8)>=8);
 function ensureHist(){
@@ -1473,6 +1485,8 @@ document.getElementById('ck_lab').addEventListener('change',function(e){ gLabels
 document.getElementById('ck_road').addEventListener('change',function(e){ gRoads.visible=e.target.checked; });
 document.getElementById('ck_wat').addEventListener('change',function(e){ gWater.visible=e.target.checked; });
 document.getElementById('ck_peak').addEventListener('change',function(e){ gPeaks.visible=(mode==='cont')&&e.target.checked; });
+document.getElementById('ck_agri').addEventListener('change',applyOverlays);
+document.getElementById('ck_bld').addEventListener('change',applyOverlays);
 document.getElementById('ck_slab').addEventListener('change',function(e){ if(mode==='sat') gLabels.visible=e.target.checked; });
 addEventListener('keydown',function(e){ var k=e.key,mv=new THREE.Vector3(); var d=camera.position.distanceTo(controls.target),pan=d*0.11; var fwd=new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y=0; if(fwd.lengthSq()<1e-6)return; fwd.normalize(); var rt=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize(); if(k==='ArrowUp')mv.copy(fwd); else if(k==='ArrowDown')mv.copy(fwd).negate(); else if(k==='ArrowRight')mv.copy(rt); else if(k==='ArrowLeft')mv.copy(rt).negate(); else return; e.preventDefault(); mv.multiplyScalar(pan); camera.position.add(mv); controls.target.add(mv); });
 /* mode switching */
@@ -1500,6 +1514,7 @@ function setMode(m){ mode=m;
   }
   moHist.visible=(m==='hist');
   gPeaks.visible=(m==='cont')&&document.getElementById('ck_peak').checked;
+  applyOverlays();
 }
 bCont.addEventListener('click',function(){ setMode('cont'); });
 bSat.addEventListener('click',function(){ setMode('sat'); });
