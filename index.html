@@ -1528,7 +1528,7 @@ document.getElementById('ck_peak').addEventListener('change',function(e){ gPeaks
 document.getElementById('ck_agri').addEventListener('change',applyOverlays);
 document.getElementById('ck_bld').addEventListener('change',applyOverlays);
 document.getElementById('ck_cont').addEventListener('change',applyContours);
-document.getElementById('ck_slab').addEventListener('change',function(e){ if(mode==='sat') gLabels.visible=e.target.checked; });
+document.getElementById('ck_slab').addEventListener('change',function(e){ if(mode==='sat'||mode==='lu') gLabels.visible=e.target.checked; });
 addEventListener('keydown',function(e){ var k=e.key,mv=new THREE.Vector3(); var d=camera.position.distanceTo(controls.target),pan=d*0.11; var fwd=new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y=0; if(fwd.lengthSq()<1e-6)return; fwd.normalize(); var rt=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize(); if(k==='ArrowUp')mv.copy(fwd); else if(k==='ArrowDown')mv.copy(fwd).negate(); else if(k==='ArrowRight')mv.copy(rt); else if(k==='ArrowLeft')mv.copy(rt).negate(); else return; e.preventDefault(); mv.multiplyScalar(pan); camera.position.add(mv); controls.target.add(mv); });
 /* mode switching */
 var bCont=document.getElementById('mode_cont'),bSat=document.getElementById('mode_sat'),bHist=document.getElementById('mode_hist'),bLU=document.getElementById('mode_lu');
@@ -1549,7 +1549,7 @@ function setMode(m){ mode=m;
     gLabels.visible=document.getElementById('ck_slab').checked;
     legend.style.display='none';
   } else if(m==='lu'){ ensureLanduse(); geo.setAttribute('color',colAttrGrey); colAttrGrey.needsUpdate=true; mesh.material=mat_base; mesh.visible=true;
-    gVect.visible=false; gLabels.visible=true;
+    gVect.visible=false; document.getElementById('satopt').style.display='block'; gLabels.visible=document.getElementById('ck_slab').checked;
     legend.style.display='block'; lgLU.style.display='block';
   } else { ensureHist(); geo.setAttribute('color',colAttrGrey); colAttrGrey.needsUpdate=true; mesh.material=mat_base; mesh.visible=true;
     gVect.visible=false; gLabels.visible=true;
