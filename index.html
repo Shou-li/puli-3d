@@ -1373,33 +1373,19 @@ addBundle(VECT.rivers,0x3f9fe0,0.92,14,gWater);
 addBundle(VECT.trk,0xa89468,0.42,16,gRoads);
 addBundle(VECT.rmin,0xb9a071,0.6,17,gRoads);
 addBundle(VECT.rmaj,0xf08a3c,0.92,18,gRoads);
-/* 等高線（主100m/計500m，向量貼地，等高線模式可勾選；懶載入 cont.json） */
+/* 等高線（主100m/計500m，向量貼地，等高線模式可勾選；懶載入 cont.json）— P1：同粗 */
 var gContour=new THREE.Group(); scene.add(gContour); gContour.visible=false;
 var contLoaded=false,contLoading=false;
-function buildContourRibbons(polys,wKm,color,opacity,off,grp){
-  var P=[],G=[],IDX=[],base=0;
-  polys.forEach(function(flat){ var n=flat.length/2; if(n<2)return;
-    var px=[]; for(var i=0;i<n;i++){ px.push([lonToX(flat[i*2]),latToZ(flat[i*2+1])]); }
-    for(var i=0;i<n;i++){ var x=px[i][0],z=px[i][1];
-      var i0=i>0?i-1:i,i1=i<n-1?i+1:i;
-      var dx=px[i1][0]-px[i0][0],dz=px[i1][1]-px[i0][1],dl=Math.sqrt(dx*dx+dz*dz)||1e-6;
-      var ox=-dz/dl*wKm/2,oz=dx/dl*wKm/2,xa=x+ox,za=z+oz,xb=x-ox,zb=z-oz;
-      P.push(xa,0,za,xb,0,zb);
-      G.push(inside(xa,za)?sampleElev(xa,za):sampleElev(x,z),inside(xb,zb)?sampleElev(xb,zb):sampleElev(x,z));
-      if(i<n-1){ var q=base+i*2; IDX.push(q,q+1,q+2,q+1,q+3,q+2); } }
-    base+=n*2; });
-  if(!P.length)return;
-  var g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(P),3)); g.setIndex(IDX);
-  var m=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:opacity,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-  m.color.convertSRGBToLinear();
-  var rm=new THREE.Mesh(g,m); rm.renderOrder=4; rm.frustumCulled=false; grp.add(rm);
-  ribbonItems.push({geo:g,gnd:new Float32Array(G),off:off}); }
-var moContour=overlay('th_contour.png'); moContour.renderOrder=3; moContour.material.opacity=1.0;
-function ensureContours(){ if(contLoaded)return; contLoaded=true; toast('等高線載入中…');
-  moContour.material.map=loadTex('th_contour.png'+TV); moContour.material.needsUpdate=true; }
+function ensureContours(){ if(contLoaded||contLoading)return; contLoading=true; toast('等高線載入中…');
+  fetch('cont.json'+TV).then(function(r){return r.json();}).then(function(C){
+    addBundle(C.main,0x9a6b3c,0.55,7,gContour);
+    addBundle(C.index,0x5f3410,0.55,8,gContour);
+    contLoaded=true; contLoading=false; toastHide(); applyContours();
+  }).catch(function(){ contLoading=false; toast('等高線載入失敗，請檢查網路後重試',6000); });
+}
 function applyContours(){ var want=(mode==='cont')&&document.getElementById('ck_cont').checked;
-  if(want) ensureContours();
-  moContour.visible=want; }
+  if(want&&!contLoaded){ ensureContours(); }
+  gContour.visible=want&&contLoaded; }
 /* 主河道貼地緞帶：眉溪・南港溪加粗 */
 var ribbonItems=[];
 function addRibbon(pts,wKm,color,off){ var n=pts.length; if(n<2)return;
@@ -1421,7 +1407,7 @@ function addRibbon(pts,wKm,color,off){ var n=pts.length; if(n<2)return;
 }
 RIVERS.forEach(function(r){
   var pts=[]; r.pts.forEach(function(p){ if(inside(lonToX(p[0]),latToZ(p[1]))) pts.push(p); });
-  addRibbon(pts,0.10,0x2f96dd,15);
+  addRibbon(pts,0.20,0x2f96dd,15);  /* P2：水文加粗 0.10→0.20km */
 });
 /* labels（2× 超取樣，拉近不糊） */
 var labelItems=[];
