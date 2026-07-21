@@ -73,6 +73,7 @@ canvas{display:block;touch-action:none}
     <div class="h">歷史地圖</div>
     <div class="togs" style="font-size:12px"><label><input type="radio" name="histmap" value="1904" checked> 1904 堡圖</label><label><input type="radio" name="histmap" value="1921"> 1921 大正</label><label><input type="radio" name="histmap" value="1989"> 1989 經建</label></div>
     <label style="margin-top:4px">史圖不透明度 <span id="hopval">100%</span><input type="range" id="hop" min="10" max="100" step="5" value="100"></label>
+    <div class="togs" style="font-size:12px;margin-top:4px"><label><input type="checkbox" id="ck_hlab" checked> 顯示地名</label></div>
   </div>
   <label>垂直誇張 <span id="exval">2.0×</span><input type="range" id="ex" min="0.5" max="4" step="0.1" value="2.0"></label>
   <button id="reset" class="full">重設視角</button>
@@ -1183,7 +1184,7 @@ var CFG = {
   baseElevDrop: 150,
   view: { facing: "N", home: { pos: [0, 28, 28], tgt: [0, 2, 0] } },
   controls: {
-    damping: 0.08, maxPolarAngle: 0.43, screenSpacePanning: true,
+    damping: 0.08, maxPolarAngle: 0.43, screenSpacePanning: false,  /* v23修1：右鍵平移鎖水平面 */
     minDistance: 0.25, maxDistance: 100, panSpeed: 1.8, zoomSpeed: 2.2, keyPanSpeed: 14
   },
   exaggeration: { default: 2.0, min: 0.5, max: 4.0 },
@@ -1199,7 +1200,8 @@ var CFG = {
       src: { lo: "sat.jpg", hi: "sat4096.jpg" } },
     { id: "hist", label: "歷史",   kind: "overlay",
       periods: [ {id:"1904",label:"1904 堡圖"},{id:"1921",label:"1921 大正"},{id:"1989",label:"1989 經建"} ],
-      defaultPeriod: "1904" }
+      defaultPeriod: "1904" },
+    { id: "lu",   label: "土地利用", kind: "landuse", overlay: "land" }  /* v23修10：土地利用模式 */
   ],
 
   overlays: {
@@ -1229,6 +1231,7 @@ var CFG = {
 
   labels: {
     superSample: 2,
+    histScale: 1.5,   /* v23修9：歷史模式地名放大 */
     peak: { fs: 36, fill: "#5d4014", hh: 0.80, off: 0.55, prefix: "▲",
             tierByEle: [ [2000, 0], [1200, 1] ], tierElse: 2 }
   },
@@ -1523,7 +1526,7 @@ function makeSprite(text,fs,fill,hh){
 function addLabel(name,lon,lat,fs,fill,hh,off,tier){
   var x=lonToX(lon),z=latToZ(lat); if(!inside(x,z)) return;
   var sp=makeSprite(name,fs,fill,hh); gLabels.add(sp);
-  labelItems.push({sp:sp,x:x,z:z,ground:sampleElev(x,z),off:off,tier:tier});
+  labelItems.push({sp:sp,x:x,z:z,ground:sampleElev(x,z),off:off,tier:tier,bsx:sp.scale.x,bsy:sp.scale.y});
 }
 /* ground markers (shancheng: red-dot-on-white-ring for 5 townships) */
 var groundMarkers=[];
@@ -1873,6 +1876,7 @@ var _ckRoad=document.getElementById('ck_road'); if(_ckRoad) _ckRoad.addEventList
 var _ckWat=document.getElementById('ck_wat'); if(_ckWat) _ckWat.addEventListener('change',function(e){ gWater.visible=e.target.checked; });
 var _ckPeak=document.getElementById('ck_peak'); if(_ckPeak) _ckPeak.addEventListener('change',function(e){ if(gPeaks) gPeaks.visible=(mode==='cont')&&e.target.checked; });
 var _ckSlab=document.getElementById('ck_slab'); if(_ckSlab) _ckSlab.addEventListener('change',function(e){ if(mode==='sat') gLabels.visible=e.target.checked; });
+var _ckHlab=document.getElementById('ck_hlab'); if(_ckHlab) _ckHlab.addEventListener('change',function(e){ if(mode==='hist') gLabels.visible=e.target.checked; });  /* v23修9 */
 if(HAS_STORY){
   var _stOrder2=CFG.story.order||Object.keys(CFG.story.groups);
   _stOrder2.forEach(function(g){ var el=document.getElementById('ck_'+g); if(el) el.addEventListener('change',function(e){ myGrp[g].visible=e.target.checked; }); });
@@ -1894,6 +1898,10 @@ function syncOverlays(){
     MO[_mk].visible=vis;
     if(vis) ensureTex(MO[_mk],CFG.overlays[_mk].src);
   }
+  /* landuse 專屬模式（puli mode_lu）：進入該模式時強制顯示 land 疊圖 */
+  for(var _lm=0;_lm<CFG.modes.length;_lm++){ var _md=CFG.modes[_lm];
+    if(_md.kind==='landuse'){ var _lk=_md.overlay||'land';
+      if(MO[_lk]&&mode===_md.id){ MO[_lk].visible=true; ensureTex(MO[_lk],CFG.overlays[_lk].src); } } }
   var luLeg=document.getElementById('lu_legend');
   if(luLeg&&MO.land) luLeg.style.display=MO.land.visible?'block':'none';
   if(gShields){ var ckR=findCk('road'); gShields.visible=(mode==='theme')&&ckR&&ckR.checked; }
@@ -1929,8 +1937,9 @@ function setMode(m){ mode=m;
   if(curMode&&curMode.colorAttr==='grey'&&colAttrGrey){ geo.setAttribute('color',colAttrGrey); colAttrGrey.needsUpdate=true; }
   else { geo.setAttribute('color',colAttrHyps); colAttrHyps.needsUpdate=true; }
   mesh.visible=true;
-  gVect.visible=(m==='cont'||m==='theme');
-  if(m==='cont'){
+  var _isLu=!!(curMode&&curMode.kind==='landuse');
+  gVect.visible=(m==='cont'||m==='theme'||_isLu);
+  if(m==='cont'||_isLu){
     var w=$id('ck_wat'); if(w) gWater.visible=w.checked;
     var r=$id('ck_road'); if(r) gRoads.visible=r.checked;
     var l=$id('ck_lab'); gLabels.visible=l?l.checked:true;
@@ -1940,19 +1949,23 @@ function setMode(m){ mode=m;
   } else if(m==='sat'){
     var sl=$id('ck_slab'); gLabels.visible=sl?sl.checked:false;
   } else {
-    gLabels.visible=true;
+    var hl=$id('ck_hlab'); gLabels.visible=hl?hl.checked:true;  /* v23修9：歷史模式地名開關 */
   }
+  /* v23修9：歷史模式地名放大 */
+  var _hsc=(m==='hist'&&CFG.labels&&CFG.labels.histScale)?CFG.labels.histScale:1;
+  for(var _li2=0;_li2<labelItems.length;_li2++){ var _it2=labelItems[_li2]; if(_it2.bsx) _it2.sp.scale.set(_it2.bsx*_hsc,_it2.bsy*_hsc,1); }
   if(gPeaks){ var pk=$id('ck_peak'); gPeaks.visible=(m==='cont')&&pk&&pk.checked; }
   syncOverlays();
   var _panels=['contopt','themeopt','histopt','satopt','thm_row','hist_row'];
   for(var _di=0;_di<_panels.length;_di++){ var pe=$id(_panels[_di]); if(pe) pe.style.display='none'; }
-  var _legends=['lg_hyps','lg_theme','lg_hist'];
+  var _legends=['lg_hyps','lg_theme','lg_hist','lg_lu'];
   for(var _ei=0;_ei<_legends.length;_ei++){ var le=$id(_legends[_ei]); if(le) le.style.display='none'; }
   var legendEl=$id('legend');
   if(m==='cont'){ var cp=$id('contopt')||$id('thm_row'); if(cp) cp.style.display='block'; if(legendEl) legendEl.style.display='block'; var lh=$id('lg_hyps'); if(lh) lh.style.display='block'; }
   else if(m==='sat'){ var sp=$id('satopt'); if(sp) sp.style.display='block'; if(legendEl) legendEl.style.display='none'; }
   else if(m==='theme'){ var tp=$id('themeopt'); if(tp) tp.style.display='block'; if(legendEl) legendEl.style.display='block'; var lt=$id('lg_theme'); if(lt) lt.style.display='block'; }
   else if(m==='hist'){ var hp=$id('histopt')||$id('hist_row'); if(hp) hp.style.display='block'; if(legendEl) legendEl.style.display='block'; var lhi=$id('lg_hist'); if(lhi) lhi.style.display='block'; }
+  else if(_isLu){ if(legendEl) legendEl.style.display='block'; var llu=$id('lg_lu'); if(llu) llu.style.display='block'; }  /* v23修10 */
 }
 for(var _fi=0;_fi<CFG.modes.length;_fi++){(function(mid){
   var btn=$id('mode_'+mid); if(btn) btn.addEventListener('click',function(){ setMode(mid); });
