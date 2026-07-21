@@ -1490,24 +1490,72 @@ addBundle(VECT.rmaj,CFG.vectors.roads[2].color,CFG.vectors.roads[2].opacity,CFG.
 var ribbonItems=[];
 function addRibbon(pts,wKm,color,off){ var n=pts.length; if(n<2)return;
   var pos=new Float32Array(n*2*3), gnd=new Float32Array(n*2), idx2=[];
+  /* 河面橫向水平＋縱向平滑：兩側頂點共用中心線高程（免河階崖差拉出直立三角形），
+     中心線再做兩輪三點移動平均（免峽谷陡坎拉出直立面） */
+  var ge=new Float32Array(n);
+  for(var e=0;e<n;e++) ge[e]=sampleElev(lonToX(pts[e][0]),latToZ(pts[e][1]));
+  for(var ps=0;ps<2;ps++){ var ge2=new Float32Array(n); ge2[0]=ge[0]; ge2[n-1]=ge[n-1];
+    for(var e2=1;e2<n-1;e2++) ge2[e2]=(ge[e2-1]+ge[e2]+ge[e2+1])/3; ge=ge2; }
+  /* 河面縱向單調下降（running-min 往下游）夾掉 DEM 突起，
+     再以坡降上限 50 m/km 攤平陡坎（堰壩/峽谷跌水），避免緞帶出現直立面 */
+  if(n>2){ var segKm=new Float32Array(n-1);
+    for(var sl=0;sl<n-1;sl++){ var sdx=lonToX(pts[sl+1][0])-lonToX(pts[sl][0]), sdz=latToZ(pts[sl+1][1])-latToZ(pts[sl][1]);
+      segKm[sl]=Math.sqrt(sdx*sdx+sdz*sdz); }
+    var MAXG=50; /* m per km */
+    if(ge[0]>=ge[n-1]){ for(var mv=1;mv<n;mv++){ if(ge[mv]>ge[mv-1]) ge[mv]=ge[mv-1];
+        if(ge[mv]<ge[mv-1]-MAXG*segKm[mv-1]) ge[mv]=ge[mv-1]-MAXG*segKm[mv-1]; } }
+    else { for(var mw=n-2;mw>=0;mw--){ if(ge[mw]>ge[mw+1]) ge[mw]=ge[mw+1];
+        if(ge[mw]<ge[mw+1]-MAXG*segKm[mw]) ge[mw]=ge[mw+1]-MAXG*segKm[mw]; } } }
+  /* 自適應寬度：向兩側取樣地形，撞壁（高過河面+off+4）或懸空跨溝（低過河面 30m）
+     就收窄該側，避免寬緞帶在坡面外露成藍色三角形塊 */
+  var CLIMB=(off||0)+4, hw=wKm/2, wA=new Float32Array(n), wB=new Float32Array(n);
+  for(var wi=0;wi<n;wi++){ var wx=lonToX(pts[wi][0]), wz=latToZ(pts[wi][1]);
+    var w0=wi>0?wi-1:wi, w1=wi<n-1?wi+1:wi;
+    var wdx=lonToX(pts[w1][0])-lonToX(pts[w0][0]), wdz=latToZ(pts[w1][1])-latToZ(pts[w0][1]);
+    var wdl=Math.sqrt(wdx*wdx+wdz*wdz)||1e-6, upx=-wdz/wdl, upz=wdx/wdl;
+    var fa=1, fb=1, DROP=15, NS=8;
+    for(var fs=1;fs<=NS;fs++){ var fr=fs/NS;
+      var sA=sampleElev(wx+upx*hw*fr,wz+upz*hw*fr), sB=sampleElev(wx-upx*hw*fr,wz-upz*hw*fr);
+      if(fr<=fa && (sA>ge[wi]+CLIMB || sA<ge[wi]-DROP)) fa=(fs-1)/NS;
+      if(fr<=fb && (sB>ge[wi]+CLIMB || sB<ge[wi]-DROP)) fb=(fs-1)/NS; }
+    wA[wi]=fa*hw; wB[wi]=fb*hw; }
+  /* 平滑寬度但以原始上限夾住：平滑只能收窄、不得把邊緣重新推上坡壁 */
+  var wAr=wA.slice(0), wBr=wB.slice(0);
+  for(var wp=0;wp<2;wp++){ for(var ws=1;ws<n-1;ws++){
+    wA[ws]=Math.min((wA[ws-1]+wA[ws]+wA[ws+1])/3, wAr[ws]);
+    wB[ws]=Math.min((wB[ws-1]+wB[ws]+wB[ws+1])/3, wBr[ws]); } }
   for(var i=0;i<n;i++){ var x=lonToX(pts[i][0]), z=latToZ(pts[i][1]);
     var i0=i>0?i-1:i, i1=i<n-1?i+1:i;
     var dx=lonToX(pts[i1][0])-lonToX(pts[i0][0]), dz=latToZ(pts[i1][1])-latToZ(pts[i0][1]);
-    var dl=Math.sqrt(dx*dx+dz*dz)||1e-6, ox=-dz/dl*wKm/2, oz=dx/dl*wKm/2;
-    var xa=x+ox,za=z+oz,xb=x-ox,zb=z-oz;
+    var dl=Math.sqrt(dx*dx+dz*dz)||1e-6, px2=-dz/dl, pz2=dx/dl;
+    var xa=x+px2*wA[i],za=z+pz2*wA[i],xb=x-px2*wB[i],zb=z-pz2*wB[i];
     pos[(i*2)*3]=xa; pos[(i*2)*3+2]=za; pos[(i*2+1)*3]=xb; pos[(i*2+1)*3+2]=zb;
-    gnd[i*2]=inside(xa,za)?sampleElev(xa,za):sampleElev(x,z);
-    gnd[i*2+1]=inside(xb,zb)?sampleElev(xb,zb):sampleElev(x,z);
-    if(i<n-1){ var q=i*2; idx2.push(q,q+1,q+2,q+1,q+3,q+2); } }
+    gnd[i*2]=ge[i]; gnd[i*2+1]=ge[i];
+    /* 谷地容不下緞帶（可用寬度 <30%）的段落不出面，交由細線河道呈現 */
+    var MINW=wKm*0.3;
+    if(i<n-1 && wA[i]+wB[i]>=MINW && wA[i+1]+wB[i+1]>=MINW){ var q=i*2; idx2.push(q,q+1,q+2,q+1,q+3,q+2); } }
   var g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setIndex(idx2);
   var m=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:CFG.ribbon.opacity,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3});
   m.color.convertSRGBToLinear();
+  /* stencil 遮罩：緞帶在急彎處自我交疊時，同一像素只混色一次，避免出現深色三角形塊 */
+  m.stencilWrite=true; m.stencilRef=1; m.stencilFunc=THREE.NotEqualStencilFunc; m.stencilZPass=THREE.ReplaceStencilOp;
   var rm=new THREE.Mesh(g,m); rm.renderOrder=4; rm.frustumCulled=false; gWater.add(rm);
   ribbonItems.push({geo:g,gnd:gnd,off:off});
 }
 if(typeof RIVERS!=='undefined'){ RIVERS.forEach(function(r){
   var pts=[]; r.pts.forEach(function(p){ if(inside(lonToX(p[0]),latToZ(p[1]))) pts.push(p); });
-  addRibbon(pts,CFG.ribbon.widthKm,CFG.ribbon.color,CFG.ribbon.off);
+  if(pts.length<2) return;
+  /* 剔除誤入支流的上坡岔段：河面沿流向必遞減，高出 running-min 30m 的點
+     是資料混入的支流／山坡（如大安溪線內含往南 2km 的支流岔跳），剔除並斷開緞帶 */
+  var ev=pts.map(function(p){ return sampleElev(lonToX(p[0]),latToZ(p[1])); });
+  var np=pts.length, keep=[], rm=Infinity, fwd=ev[0]>=ev[np-1];
+  for(var ki=0;ki<np;ki++) keep.push(true);
+  for(var fi=0;fi<np;fi++){ var ix=fwd?fi:np-1-fi;
+    if(ev[ix]<rm) rm=ev[ix]; else if(ev[ix]>rm+30) keep[ix]=false; }
+  var run=[];
+  for(var si=0;si<np;si++){ if(keep[si]) run.push(pts[si]);
+    else { if(run.length>=2) addRibbon(run,CFG.ribbon.widthKm,CFG.ribbon.color,CFG.ribbon.off); run=[]; } }
+  if(run.length>=2) addRibbon(run,CFG.ribbon.widthKm,CFG.ribbon.color,CFG.ribbon.off);
 }); }
 /* labels */
 var labelItems=[];
